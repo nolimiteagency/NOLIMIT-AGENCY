@@ -1,0 +1,11 @@
+{
+  "name": "nolimit-agency",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Site officiel NO LIMIT — agence digitale (site statique + fonction serveur de devis via Resend)",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node tests/devis.test.js"
+  },
+  "engines": { "node": ">=18" }
+}
