@@ -92,7 +92,7 @@ Le certificat HTTPS est émis automatiquement par Vercel une fois le DNS propag�
    `GMAIL_USER` et `QUOTE_TO` sont déjà définis. Puis redéployez.
 Limite Gmail : environ 500 e-mails par jour, largement suffisant pour des demandes de devis.
 
-**Option C — FormSubmit (aucun mot de passe, active)** : variable Vercel `USE_FORMSUBMIT` = `1`. Au premier devis, FormSubmit envoie un lien d'activation à `QUOTE_TO` : cliquez-le une fois. Utilisé seulement si Gmail et Resend ne sont pas configurés. Les demandes transitent par formsubmit.co (service tiers).
+**Option C — FormSubmit (aucun mot de passe, active)** : variable Vercel `USE_FORMSUBMIT` = `1`. Le serveur valide la demande (anti-robot, champs) puis le navigateur la transmet à FormSubmit, qui refuse les appels venant de serveurs. Au premier devis, FormSubmit envoie un lien d'activation à `QUOTE_TO` : cliquez-le une fois. Utilisé seulement si Gmail et Resend ne sont pas configurés. Les demandes transitent par formsubmit.co (service tiers).
 
 **Option B — Resend (avec domaine vérifié)**, prioritaire seulement si `GMAIL_*` est retiré :
 1. resend.com → Domains → Add Domain → ajoutez les enregistrements DNS affichés (DKIM, SPF, MX `send`), statut **Verified**.

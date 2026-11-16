@@ -3558,6 +3558,12 @@ DEMOS.ta = function (root, sc) {
       const res = await fetch(ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), signal: ctl.signal });
       let j = {}; try { j = await res.json(); } catch (e) {}
       if (res.ok && j.ok) return { ok: true, ref: j.ref || payload.ref, ackSent: !!j.ackSent };
+      if (res.ok && j.relay && /^https:\/\/formsubmit\.co\/ajax\//.test(j.relay.url)) {
+        const r2 = await fetch(j.relay.url, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify(j.relay.fields), signal: ctl.signal });
+        let k = {}; try { k = await r2.json(); } catch (e) {}
+        if (r2.ok && (k.success === true || k.success === 'true')) return { ok: true, ref: j.ref || payload.ref, ackSent: true };
+        return { ok: false, msg: '' };
+      }
       return { ok: false, msg: j.error || (res.status === 429 ? 'Trop de demandes envoyées en peu de temps. Réessayez dans quelques minutes.' : '') };
     } catch (e) { return { ok: false, msg: '' }; } finally { clearTimeout(to); }
   }

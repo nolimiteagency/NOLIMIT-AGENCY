@@ -97,26 +97,20 @@ async function gmailSend(msg) {
     return { ok, id: info.messageId, status: ok ? 200 : 550, error: ok ? undefined : 'rejected' };
   } catch (e) { return { ok: false, status: 502, error: e && (e.code || e.message) }; }
 }
-// Envoi via FormSubmit (formsubmit.co) — un seul appel : e-mail à l'agence + réponse automatique au client.
-async function formsubmit(to, d, a, k, siteUrl) {
-  const payload = {
-    _subject: '[NOUVELLE DEMANDE DE DEVIS] — NO LIMIT', _template: 'table', _captcha: 'false', _replyto: d.email,
-    _autoresponse: k.text,
-    Nom: d.name, email: d.email, 'Téléphone': d.phone || '—', Entreprise: d.organization || d.company,
-    'Service demandé': d.type + (d.offer ? ` (formule ${d.offer})` : ''), Projet: d.company, Description: d.description,
-    Objectifs: d.objectives, 'Fonctionnalités': d.features.join(', ') || '—', 'Site actuel': d.currentSite || '—',
-    Budget: d.budget, 'Délai': d.delay, 'Référence': d.ref
+// FormSubmit (formsubmit.co) refuse les appels venant des serveurs : la fonction valide la demande,
+// puis renvoie au navigateur les champs à transmettre. Le site n'affiche le succès que si FormSubmit confirme.
+function formsubmitRelay(to, d, k) {
+  return {
+    url: 'https://formsubmit.co/ajax/' + encodeURIComponent(to),
+    fields: {
+      _subject: '[NOUVELLE DEMANDE DE DEVIS] — NO LIMIT', _template: 'table', _captcha: 'false', _replyto: d.email,
+      _autoresponse: k.text,
+      Nom: d.name, email: d.email, 'Téléphone': d.phone || '—', Entreprise: d.organization || d.company,
+      'Service demandé': d.type + (d.offer ? ` (formule ${d.offer})` : ''), Projet: d.company, Description: d.description,
+      Objectifs: d.objectives, 'Fonctionnalités': d.features.join(', ') || '—', 'Site actuel': d.currentSite || '—',
+      Budget: d.budget, 'Délai': d.delay, 'Référence': d.ref
+    }
   };
-  try {
-    const r = await fetch('https://formsubmit.co/ajax/' + encodeURIComponent(to), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json', Origin: siteUrl, Referer: siteUrl + '/' },
-      body: JSON.stringify(payload)
-    });
-    let j = {}; try { j = await r.json(); } catch (e) {}
-    const ok = r.ok && (j.success === true || j.success === 'true');
-    return { ok, status: r.status, id: ok ? 'formsubmit' : undefined, error: ok ? undefined : (j.message || 'refused') };
-  } catch (e) { return { ok: false, status: 502, error: e && e.message }; }
 }
 async function resend(apiKey, msg) {
   const r = await fetch('https://api.resend.com/emails', {
@@ -164,15 +158,8 @@ module.exports = async function handler(req, res) {
 
   const a = adminEmail(d, when);
   if (useFormsubmit) {
-    const host = req.headers['x-forwarded-host'] || req.headers.host || '';
-    const siteUrl = process.env.SITE_URL || (host ? 'https://' + host : 'https://nolimit.agency');
-    const fs = await formsubmit(to, d, a, ackEmail(d), siteUrl);
-    if (!fs.ok) {
-      console.error('[devis] échec FormSubmit', { ref: d.ref, status: fs.status, error: fs.error });
-      return res.status(502).json({ ok: false, error: "Votre demande n'a pas pu être envoyée pour le moment. Réessayez dans quelques minutes ou écrivez-nous à nolimite.agency@gmail.com." });
-    }
-    console.log('[devis] envoyée (FormSubmit)', JSON.stringify({ ref: d.ref }));
-    return res.status(200).json({ ok: true, ref: d.ref, ackSent: true });
+    console.log('[devis] relais FormSubmit', JSON.stringify({ ref: d.ref }));
+    return res.status(200).json({ ok: false, relay: formsubmitRelay(to, d, ackEmail(d)), ref: d.ref });
   }
   const sent = await send({ from, to: [to], reply_to: d.email, subject: '[NOUVELLE DEMANDE DE DEVIS] — NO LIMIT', text: a.text, html: a.html });
   if (!sent.ok) {
