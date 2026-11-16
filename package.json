@@ -5,7 +5,7 @@
   "description": "Site officiel NO LIMIT — agence digitale (site statique + fonction serveur de devis : Gmail ou Resend)",
   "scripts": {
     "start": "node server.js",
-    "test": "node tests/devis.test.js && node tests/gmail.test.js"
+    "test": "node tests/devis.test.js && node tests/gmail.test.js && node tests/formsubmit.test.js"
   },
   "dependencies": {
     "nodemailer": "^6.9.16"

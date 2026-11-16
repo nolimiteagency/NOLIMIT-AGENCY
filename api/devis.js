@@ -2,7 +2,8 @@
 // Reçoit le formulaire du site, le valide, envoie l'e-mail à l'agence puis l'accusé de réception au client via Resend.
 // La clé API reste côté serveur (variable d'environnement), jamais dans le navigateur.
 //
-// Fournisseur d'envoi : Gmail (GMAIL_USER + GMAIL_APP_PASSWORD) en priorité, sinon Resend.
+// Fournisseur d'envoi : Gmail (GMAIL_USER + GMAIL_APP_PASSWORD) en priorité, sinon Resend,
+// sinon FormSubmit (USE_FORMSUBMIT=1 : aucun mot de passe, activation par un lien reçu une fois par e-mail).
 // Variables d'environnement :
 //   RESEND_API_KEY   (obligatoire)  clé API Resend
 //   QUOTE_FROM       (obligatoire)  expéditeur vérifié, ex. "NO LIMIT <devis@votre-domaine.fr>"
@@ -96,6 +97,27 @@ async function gmailSend(msg) {
     return { ok, id: info.messageId, status: ok ? 200 : 550, error: ok ? undefined : 'rejected' };
   } catch (e) { return { ok: false, status: 502, error: e && (e.code || e.message) }; }
 }
+// Envoi via FormSubmit (formsubmit.co) — un seul appel : e-mail à l'agence + réponse automatique au client.
+async function formsubmit(to, d, a, k, siteUrl) {
+  const payload = {
+    _subject: '[NOUVELLE DEMANDE DE DEVIS] — NO LIMIT', _template: 'table', _captcha: 'false', _replyto: d.email,
+    _autoresponse: k.text,
+    Nom: d.name, email: d.email, 'Téléphone': d.phone || '—', Entreprise: d.organization || d.company,
+    'Service demandé': d.type + (d.offer ? ` (formule ${d.offer})` : ''), Projet: d.company, Description: d.description,
+    Objectifs: d.objectives, 'Fonctionnalités': d.features.join(', ') || '—', 'Site actuel': d.currentSite || '—',
+    Budget: d.budget, 'Délai': d.delay, 'Référence': d.ref
+  };
+  try {
+    const r = await fetch('https://formsubmit.co/ajax/' + encodeURIComponent(to), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json', Origin: siteUrl, Referer: siteUrl + '/' },
+      body: JSON.stringify(payload)
+    });
+    let j = {}; try { j = await r.json(); } catch (e) {}
+    const ok = r.ok && (j.success === true || j.success === 'true');
+    return { ok, status: r.status, id: ok ? 'formsubmit' : undefined, error: ok ? undefined : (j.message || 'refused') };
+  } catch (e) { return { ok: false, status: 502, error: e && e.message }; }
+}
 async function resend(apiKey, msg) {
   const r = await fetch('https://api.resend.com/emails', {
     method: 'POST',
@@ -117,7 +139,8 @@ module.exports = async function handler(req, res) {
   const apiKey = process.env.RESEND_API_KEY, to = process.env.QUOTE_TO || QUOTE_TO_DEFAULT;
   const from = useGmail ? `NO LIMIT <${process.env.GMAIL_USER}>` : process.env.QUOTE_FROM;
   const send = msg => useGmail ? gmailSend(msg) : resend(apiKey, msg);
-  if (!useGmail && (!apiKey || !from)) { console.error('[devis] configuration manquante : GMAIL_USER/GMAIL_APP_PASSWORD ou RESEND_API_KEY/QUOTE_FROM'); return res.status(503).json({ ok: false, error: "Le service d'envoi n'est pas encore configuré. Écrivez-nous à nolimite.agency@gmail.com." }); }
+  const useFormsubmit = !useGmail && !(apiKey && from) && process.env.USE_FORMSUBMIT === '1';
+  if (!useGmail && !useFormsubmit && (!apiKey || !from)) { console.error('[devis] configuration manquante : GMAIL_USER/GMAIL_APP_PASSWORD ou RESEND_API_KEY/QUOTE_FROM'); return res.status(503).json({ ok: false, error: "Le service d'envoi n'est pas encore configuré. Écrivez-nous à nolimite.agency@gmail.com." }); }
 
   let body = req.body;
   if (typeof body === 'string') { try { body = JSON.parse(body); } catch (e) { body = null; } }
@@ -140,6 +163,17 @@ module.exports = async function handler(req, res) {
   console.log('[devis] reçue', JSON.stringify({ ref: d.ref, at: new Date().toISOString(), type: d.type, budget: d.budget, delay: d.delay, emailDomain: d.email.split('@')[1] }));
 
   const a = adminEmail(d, when);
+  if (useFormsubmit) {
+    const host = req.headers['x-forwarded-host'] || req.headers.host || '';
+    const siteUrl = process.env.SITE_URL || (host ? 'https://' + host : 'https://nolimit.agency');
+    const fs = await formsubmit(to, d, a, ackEmail(d), siteUrl);
+    if (!fs.ok) {
+      console.error('[devis] échec FormSubmit', { ref: d.ref, status: fs.status, error: fs.error });
+      return res.status(502).json({ ok: false, error: "Votre demande n'a pas pu être envoyée pour le moment. Réessayez dans quelques minutes ou écrivez-nous à nolimite.agency@gmail.com." });
+    }
+    console.log('[devis] envoyée (FormSubmit)', JSON.stringify({ ref: d.ref }));
+    return res.status(200).json({ ok: true, ref: d.ref, ackSent: true });
+  }
   const sent = await send({ from, to: [to], reply_to: d.email, subject: '[NOUVELLE DEMANDE DE DEVIS] — NO LIMIT', text: a.text, html: a.html });
   if (!sent.ok) {
     console.error('[devis] échec envoi agence', { ref: d.ref, status: sent.status, error: sent.error });
