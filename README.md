@@ -53,17 +53,12 @@ Vérifiez sa disponibilité et achetez-le chez un registraire (OVH, Gandi, Namec
 Le prix d'un `.agency` varie selon le registraire : comparez avant d'acheter.
 
 ### 2. GitHub
-1. Créez un dépôt privé `nolimit-agency` sur github.com (sans README).
-2. Dans ce dossier :
-   ```
-   git remote add origin https://github.com/<votre-compte>/nolimit-agency.git
-   git branch -M main
-   git push -u origin main
-   ```
-   (Le dépôt Git local est déjà initialisé avec un premier commit.)
+Le code est sur **github.com/nolimiteagency/NOLIMIT-AGENCY** (branche `main`).
+Le dépôt est **public** : n'y ajoutez jamais de clé ni de fichier `.env.local`. Pour le rendre privé :
+Settings → General → Danger Zone → Change visibility (Vercel fonctionne aussi avec un dépôt privé).
 
 ### 3. Vercel
-1. vercel.com → **Add New → Project** → importez le dépôt `nolimit-agency`.
+1. vercel.com → **Add New → Project** → connectez GitHub et importez le dépôt `NOLIMIT-AGENCY`.
 2. Framework : **Other**. Ne changez rien d'autre (`vercel.json` définit le dossier `public`).
 3. **Settings → Environment Variables** (Production) :
 
