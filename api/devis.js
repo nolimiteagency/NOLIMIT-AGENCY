@@ -2,6 +2,7 @@
 // Reçoit le formulaire du site, le valide, envoie l'e-mail à l'agence puis l'accusé de réception au client via Resend.
 // La clé API reste côté serveur (variable d'environnement), jamais dans le navigateur.
 //
+// Fournisseur d'envoi : Gmail (GMAIL_USER + GMAIL_APP_PASSWORD) en priorité, sinon Resend.
 // Variables d'environnement :
 //   RESEND_API_KEY   (obligatoire)  clé API Resend
 //   QUOTE_FROM       (obligatoire)  expéditeur vérifié, ex. "NO LIMIT <devis@votre-domaine.fr>"
@@ -82,6 +83,19 @@ function ackEmail(d) {
   return { text, html };
 }
 
+// Envoi via Gmail (SMTP + mot de passe d'application) — utilisé si GMAIL_USER et GMAIL_APP_PASSWORD sont définis.
+let _gmail = null;
+async function gmailSend(msg) {
+  if (!_gmail) {
+    const nodemailer = require('nodemailer');
+    _gmail = nodemailer.createTransport({ host: 'smtp.gmail.com', port: 465, secure: true, auth: { user: process.env.GMAIL_USER, pass: String(process.env.GMAIL_APP_PASSWORD).replace(/\s+/g, '') } });
+  }
+  try {
+    const info = await _gmail.sendMail({ from: msg.from, to: msg.to, replyTo: msg.reply_to, subject: msg.subject, text: msg.text, html: msg.html });
+    const ok = Array.isArray(info.accepted) && info.accepted.length > 0;
+    return { ok, id: info.messageId, status: ok ? 200 : 550, error: ok ? undefined : 'rejected' };
+  } catch (e) { return { ok: false, status: 502, error: e && (e.code || e.message) }; }
+}
 async function resend(apiKey, msg) {
   const r = await fetch('https://api.resend.com/emails', {
     method: 'POST',
@@ -99,8 +113,11 @@ module.exports = async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(204).end();
   if (req.method !== 'POST') return res.status(405).json({ ok: false, error: 'Méthode non autorisée.' });
 
-  const apiKey = process.env.RESEND_API_KEY, from = process.env.QUOTE_FROM, to = process.env.QUOTE_TO || QUOTE_TO_DEFAULT;
-  if (!apiKey || !from) { console.error('[devis] configuration manquante : RESEND_API_KEY ou QUOTE_FROM'); return res.status(503).json({ ok: false, error: "Le service d'envoi n'est pas encore configuré. Écrivez-nous à nolimite.agency@gmail.com." }); }
+  const useGmail = !!(process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD);
+  const apiKey = process.env.RESEND_API_KEY, to = process.env.QUOTE_TO || QUOTE_TO_DEFAULT;
+  const from = useGmail ? `NO LIMIT <${process.env.GMAIL_USER}>` : process.env.QUOTE_FROM;
+  const send = msg => useGmail ? gmailSend(msg) : resend(apiKey, msg);
+  if (!useGmail && (!apiKey || !from)) { console.error('[devis] configuration manquante : GMAIL_USER/GMAIL_APP_PASSWORD ou RESEND_API_KEY/QUOTE_FROM'); return res.status(503).json({ ok: false, error: "Le service d'envoi n'est pas encore configuré. Écrivez-nous à nolimite.agency@gmail.com." }); }
 
   let body = req.body;
   if (typeof body === 'string') { try { body = JSON.parse(body); } catch (e) { body = null; } }
@@ -123,13 +140,13 @@ module.exports = async function handler(req, res) {
   console.log('[devis] reçue', JSON.stringify({ ref: d.ref, at: new Date().toISOString(), type: d.type, budget: d.budget, delay: d.delay, emailDomain: d.email.split('@')[1] }));
 
   const a = adminEmail(d, when);
-  const sent = await resend(apiKey, { from, to: [to], reply_to: d.email, subject: '[NOUVELLE DEMANDE DE DEVIS] — NO LIMIT', text: a.text, html: a.html });
+  const sent = await send({ from, to: [to], reply_to: d.email, subject: '[NOUVELLE DEMANDE DE DEVIS] — NO LIMIT', text: a.text, html: a.html });
   if (!sent.ok) {
     console.error('[devis] échec envoi agence', { ref: d.ref, status: sent.status, error: sent.error });
     return res.status(502).json({ ok: false, error: "Votre demande n'a pas pu être envoyée pour le moment. Réessayez dans quelques minutes ou écrivez-nous à nolimite.agency@gmail.com." });
   }
   const k = ackEmail(d);
-  const ack = await resend(apiKey, { from, to: [d.email], reply_to: to, subject: 'Votre demande a bien été reçue — NO LIMIT', text: k.text, html: k.html });
+  const ack = await send({ from, to: [d.email], reply_to: to, subject: 'Votre demande a bien été reçue — NO LIMIT', text: k.text, html: k.html });
   if (!ack.ok) console.error('[devis] échec accusé de réception', { ref: d.ref, status: ack.status, error: ack.error });
   console.log('[devis] envoyée', JSON.stringify({ ref: d.ref, adminId: sent.id, ackId: ack.id || null }));
   return res.status(200).json({ ok: true, ref: d.ref, ackSent: ack.ok });

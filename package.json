@@ -1,11 +1,14 @@
 {
   "name": "nolimit-agency",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
-  "description": "Site officiel NO LIMIT — agence digitale (site statique + fonction serveur de devis via Resend)",
+  "description": "Site officiel NO LIMIT — agence digitale (site statique + fonction serveur de devis : Gmail ou Resend)",
   "scripts": {
     "start": "node server.js",
-    "test": "node tests/devis.test.js"
+    "test": "node tests/devis.test.js && node tests/gmail.test.js"
+  },
+  "dependencies": {
+    "nodemailer": "^6.9.16"
   },
   "engines": { "node": ">=18" }
 }

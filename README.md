@@ -15,7 +15,7 @@ nolimit-agency/
 │   ├── og.png               image de partage réseaux sociaux (1200 × 630)
 │   ├── favicon.ico, icon-192.png, icon-512.png, apple-touch-icon.png, site.webmanifest
 │   ├── robots.txt, sitemap.xml
-├── api/devis.js             fonction serveur : validation, anti-spam, limite de débit, envoi Resend
+├── api/devis.js             fonction serveur : validation, anti-spam, limite de débit, envoi Gmail ou Resend
 ├── server.js                serveur local sans dépendance (npm start)
 ├── tests/devis.test.js      tests de la fonction (npm test, Resend simulé, aucun e-mail réel)
 ├── vercel.json              dossier de sortie, en-têtes de sécurité, cache des assets
@@ -36,6 +36,7 @@ gris clair `#E8ECF1`, champagne `#C6A875` ; Manrope pour les titres, Inter pour 
 Node.js 18 ou plus. Aucune installation de paquet nécessaire.
 
 ```
+npm install     # une seule dépendance : nodemailer
 npm test        # tests de la fonction de devis
 npm start       # http://localhost:3000
 ```
@@ -82,14 +83,18 @@ Chez votre registraire, créez les enregistrements **exactement tels que Vercel 
 
 Le certificat HTTPS est émis automatiquement par Vercel une fois le DNS propagé (quelques minutes à 48 h).
 
-### 5. Resend (envoi des e-mails)
-1. resend.com → créez un compte → **Domains → Add Domain** → `nolimit.agency` (région UE conseillée).
-2. Ajoutez chez votre registraire les enregistrements affichés par Resend (DKIM `resend._domainkey`, SPF et MX sur
-   le sous-domaine `send`, DMARC recommandé). Attendez le statut **Verified**.
-3. **API Keys → Create** avec la permission *Sending access* → collez-la uniquement dans Vercel (`RESEND_API_KEY`).
-4. Redéployez (Deployments → … → Redeploy) pour que la variable soit prise en compte.
+### 5. Envoi des e-mails
 
-Resend propose une offre gratuite limitée en volume ; vérifiez les tarifs à jour sur leur site.
+**Option A — Gmail (active, sans domaine)** : les e-mails partent de nolimite.agency@gmail.com.
+1. Activez la validation en deux étapes du compte Google : https://myaccount.google.com/signinoptions/twosv
+2. Créez un mot de passe d'application : https://myaccount.google.com/apppasswords (nom : « NO LIMIT site »).
+3. Dans Vercel → Settings → Environment Variables, ajoutez `GMAIL_APP_PASSWORD` (Sensitive, Production) avec ce mot de passe.
+   `GMAIL_USER` et `QUOTE_TO` sont déjà définis. Puis redéployez.
+Limite Gmail : environ 500 e-mails par jour, largement suffisant pour des demandes de devis.
+
+**Option B — Resend (avec domaine vérifié)**, prioritaire seulement si `GMAIL_*` est retiré :
+1. resend.com → Domains → Add Domain → ajoutez les enregistrements DNS affichés (DKIM, SPF, MX `send`), statut **Verified**.
+2. API Keys → Create (Sending access) → `RESEND_API_KEY` dans Vercel, et `QUOTE_FROM` = `NO LIMIT <devis@votre-domaine>`.
 
 ### 6. Test de production
 1. Sur `https://nolimit.agency`, envoyez une demande dont la description commence par `[TEST]`, avec une adresse e-mail à vous.
